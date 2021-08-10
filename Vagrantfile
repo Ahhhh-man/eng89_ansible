@@ -1,5 +1,5 @@
 
- -*- mode: ruby -*-
+# -*- mode: ruby -*-
 # vi: set ft=ruby :
 
 # All Vagrant configuration is done below. The "2" in Vagrant.configure
@@ -47,8 +47,12 @@ Vagrant.configure("2") do |config|
     controller.vm.hostname = 'controller'
     
     controller.vm.network :private_network, ip: "192.168.33.12"
+
+    controller.vm.synced_folder ".", "/home/vagrant/code"
     
     config.hostsupdater.aliases = ["development.controller"] 
+
+
     
   end
 

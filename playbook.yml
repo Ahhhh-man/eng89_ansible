@@ -1,0 +1,159 @@
+--- 
+
+- 
+  hosts: db
+  gather_facts: yes
+  become: true
+
+  tasks:
+  - name: install mongodb
+    apt: pkg=mongodb state=present
+
+  - name: Remove mongodb file (delete file)
+    file:
+      path: /etc/mongodb.conf
+      state: absent
+
+  - name: make mongo config file
+    file:
+      path: /etc/mongodb.conf
+      state: touch
+      mode: u=rw,g=r,o=r
+
+  - name: add loc
+    blockinfile:
+      path: /etc/mongodb.conf
+      backup: yes
+      block: |
+        "storage:
+          dbPath: /var/lib/mongodb
+          journal:
+            enabled: true
+        systemLog:
+          destination: file
+          logAppend: true
+          path: /var/log/mongodb/mongod.log
+        net:
+          port: 27017
+          bindIp: 0.0.0.0"
+    notify: 
+      - "restart mongodb"
+  - 
+  # sync app code
+    name: Sync environment code
+    synchronize:
+      src: ~/code/environment/
+      dest: environment/
+
+  handlers: 
+    - 
+      name: "restart mongodb"
+      service: 
+        name: mongodb
+        state: restarted
+- 
+  hosts: web
+  become: true
+  gather_facts: true
+  
+  tasks: 
+    - 
+    # install nginx
+      apt: "pkg=nginx state=present update_cache=yes"
+      name: "Install Nginx"
+      notify: 
+        - "restart nginx"
+    
+    # reverse proxy    
+    - 
+      name: "delete current default"
+      file:
+        path: /etc/nginx/sites-available/default
+        state: absent
+    - 
+      name: "create default"
+      file:
+        path: /etc/nginx/sites-available/default
+        state: touch
+        mode: 0644
+    - 
+      name: "change default file"
+      blockinfile:
+        path: /etc/nginx/sites-available/default
+        block: |
+          server{
+            listen 80;
+            server_name _;
+            location / {
+            proxy_pass http://192.168.33.10:3000;
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade \$http_upgrade;
+            proxy_set_header Connection 'upgrade';
+            proxy_set_header Host \$host;
+            proxy_cache_bypass \$http_upgrade;
+            }
+          }
+      notify: 
+        - "restart nginx"
+    
+
+    # Install node
+    - 
+      name: Install the gpg key for nodejs LTS
+      apt_key:
+        url: "https://deb.nodesource.com/gpgkey/nodesource.gpg.key"
+        state: present
+
+    - 
+      name: Install the nodejs LTS repos
+      apt_repository:
+        repo: "deb https://deb.nodesource.com/node_10.x xenial main"
+        state: present
+        update_cache: yes
+
+    - 
+      name: Install the nodejs
+      apt:
+        name: nodejs
+        state: present
+
+    - 
+    # sync app code
+      name: Sync app code
+      synchronize:
+        src: ~/code/app/
+        dest: app/
+    
+    - 
+      name: export db
+      environment:
+        DB_HOST: mongodb://192.168.33.11:27017/posts
+        
+    # Install pm2
+    - 
+      name: Install pm2
+      npm:
+        name: pm2
+        global: yes
+    - 
+    # Run pm2
+      name: Delete old pm2 process
+      command: pm2 kill
+      ignore_errors: yes
+
+    - 
+      name: Start pm2
+      command: pm2 start /home/vagrant/app/app.js
+
+  handlers: 
+    - 
+      name: "restart nginx"
+      service: 
+        name: nginx
+        state: restarted
+
+        
+    
+# copy the app code to web server (sync folder)
+# go to right location and install npm
+# npm start or node start app.js
